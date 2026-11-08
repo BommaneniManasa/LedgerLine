@@ -1,0 +1,15 @@
+# Optional helper: PostgreSQL 17 for local development only.
+# Usage:  cp .env.example .env   (fill in LEDGERLINE_DB_PASSWORD)   then   docker compose --env-file .env up -d
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ledgerline
+      POSTGRES_USER: ${LEDGERLINE_DB_USER:?set LEDGERLINE_DB_USER in .env}
+      POSTGRES_PASSWORD: ${LEDGERLINE_DB_PASSWORD:?set LEDGERLINE_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"      # reachable from this machine only
+    volumes:
+      - ledgerline-data:/var/lib/postgresql/data
+volumes:
+  ledgerline-data:
