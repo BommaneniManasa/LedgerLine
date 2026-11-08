@@ -1,60 +1,133 @@
-# Testing
+﻿# Testing
 
-## Honest status (what actually ran during generation)
+## Verified status (November 8, 2026)
 
-The generation environment had **no access to Maven Central or the npm registry** (outbound package downloads blocked),
-so the Spring Boot code could not be compiled and Vite could not be run there. Everything below is labelled accordingly.
+The following checks were executed on the developer's local machine.
 
 | Area | Check | Result |
 |---|---|---|
-| Database | All 7 Flyway migrations applied to an empty **PostgreSQL 16.15** database via `psql` (not PG 17, not via Flyway itself) | **Executed — applied cleanly** |
-| Database | `database/tests/db_guarantees.sql` (28 checks: unique email, balance ≥ 0, one system account per currency, NUMERIC money, deferred ledger-balance trigger — missing/one-sided/unequal/wrong-account entries rejected, balanced commit OK, one DEBIT + one CREDIT only, ledger/transaction/audit UPDATE·DELETE·TRUNCATE blocked, idempotency uniqueness) | **Executed — 28 passed, 0 failed** |
-| Frontend | `npm test` (`node --test`): validators, password policy, money parsing, idempotency keys, token storage, API client with mocked `fetch` | **Executed — 20 passed, 0 failed** (re-run independently) |
-| Frontend | esbuild bundle of `src/main.jsx` with React 19 (proves JSX compiles) | **Executed — compiled** (this is *not* `vite build`) |
-| Frontend | Playwright browser smoke test of the bundled UI against a **throw-away mock API** (login errors, protected-route redirects, role guards, deposit/withdraw/transfer flows incl. confirm step and rejection display, admin + auditor screens, register/logout, 404, hostile text rendered as plain text, token never in `localStorage`, 390 px layout) | **Executed — 34 of 34 checks passed.** Run by a sub-agent during generation; the mock server/script are not part of the ZIP. Not run against the real backend |
-| Backend | Java syntax parse of all 80 main + test files (`javac` parser) | **Executed — 0 syntax errors.** This is a parse only, **not a compile** |
-| Backend | `mvn compile`, `mvn test` (33 unit tests), `mvn spring-boot:run` | **NOT executed** (no dependencies available) |
-| Backend | `LedgerlineIntegrationTest` (18 tests, real HTTP + PostgreSQL) | **NOT executed** (needs Spring + DB) |
-| Frontend | `npm install`, `npm run build` (Vite) | **NOT executed** (no registry access) |
-| System | Real frontend ↔ real backend ↔ PostgreSQL 17 end-to-end | **NOT executed** |
+| Backend | Maven test suite | **50 passed, 0 failures, 0 errors, 0 skipped** |
+| Backend | Integration tests against real PostgreSQL 17 | **17 passed, 0 failures, 0 errors, 0 skipped** |
+| Backend | Unit tests | **33 passed, 0 failures, 0 errors, 0 skipped** |
+| Backend | Spring Boot application startup | **Started successfully; Tomcat on port 8080** |
+| Backend | Health endpoint | **GET /api/health returned UP** |
+| Frontend | Node.js unit tests | **20 passed, 0 failed** |
+| Frontend | Vite production build | **Succeeded** |
+| Database | SQL guarantees script | **28 checks passed on PostgreSQL 16** (separate earlier verification) |
+| Browser | Manual customer, admin and auditor workflows against the running backend | **Verified manually** |
+| Browser | Generation-time mock API smoke test | **34 of 34 checks passed** (not a real-backend E2E test) |
 
-Please treat the NOT-executed rows as the first thing to run on your machine (see the README checklist).
+## Backend unit tests (33)
 
-## Test inventory
+Source: `backend/src/test/java/.../`
 
-### Backend unit tests (33 `@Test`, no DB) — `backend/src/test/java/.../`
-| File | Covers |
+| Test class | Tests | Coverage |
+|---|---:|---|
+| `security/JwtServiceTest` | 9 | Token issue/validation, expiry, issuer, tampering, algorithm rejection and secret validation |
+| `service/AccountNumberGeneratorTest` | 3 | Account number format and uniqueness |
+| `service/AuditServiceTest` | 6 | Sensitive metadata filtering, JSON escaping and value limits |
+| `service/IdempotencyServiceTest` | 6 | Key format, fingerprints, replay and conflict behaviour |
+| `service/MoneyUtilTest` | 5 | Money precision, positive amounts and limits |
+| `service/PasswordPolicyTest` | 4 | Password length, character requirements and bcrypt byte limit |
+| **Total** | **33** | **All passed** |
+
+## Backend integration tests (17)
+
+Source: `backend/src/test/java/.../integration/LedgerlineIntegrationTest`
+
+Executed against a real PostgreSQL 17 database using Spring Boot `@SpringBootTest(RANDOM_PORT)`, HTTP requests and JDBC assertions.
+
+**Result: 17 passed, 0 failures, 0 errors, 0 skipped.**
+
+| Test area | Verified behaviour |
 |---|---|
-| `security/JwtServiceTest` | token issue/validate, expiry, wrong issuer, tampered signature, `alg=none`, weak/missing secret |
-| `service/PasswordPolicyTest` | length, letter+digit, 72-byte bcrypt limit |
-| `service/MoneyUtilTest` | 2-decimal normalisation, rejection of ≤ 0, > 2 decimals, over-limit |
-| `service/AccountNumberGeneratorTest` | format and uniqueness of generated numbers |
-| `service/IdempotencyServiceTest` | key format, fingerprint stability/difference, replay vs conflict vs reuse logic |
-| `service/AuditServiceTest` | secret-looking metadata keys dropped, JSON escaping, value length limits |
+| Authentication | Registration, login, duplicate email rejection, role selection prevention, password hash protection, generic login errors and account lockout |
+| JWT and sessions | Invalid JWT rejection and logout token revocation |
+| Authorization | Backend role-based access restrictions |
+| IDOR | Customer cannot access another customer's account or transactions |
+| Financial operations | Deposit, withdrawal, transfer, double-entry ledger and balance updates |
+| Validation | Invalid requests rejected without changing financial records |
+| Account status | Frozen accounts cannot move money |
+| Idempotency | Duplicate key replay returns original result and moves money once |
+| Concurrent idempotency | Concurrent requests using the same key create only one transaction |
+| Concurrent transfers | No overdraft and consistent balances |
+| Deadlock prevention | Opposite-direction concurrent transfers complete without deadlock |
+| Audit | Audit events are created, visible to auditors and contain no secrets |
+| Database immutability | Audit, ledger and transaction tables reject unauthorized modifications |
 
-### Backend integration tests (18 `@Test`) — `integration/LedgerlineIntegrationTest`
-Real HTTP (JDK `HttpClient`) against `@SpringBootTest(RANDOM_PORT)` + real PostgreSQL + JDBC assertions.
-Skipped automatically unless `LEDGERLINE_DB_URL` and `LEDGERLINE_BOOTSTRAP_ADMIN_EMAIL` are set.
-**Use an empty scratch database** — tests create users and move test money.
+## Frontend unit tests (20)
 
-| Area | Tests |
-|---|---|
-| Authentication | register/login + duplicate email · role cannot be chosen at registration, no password in responses · generic error for wrong password vs unknown user · lockout after 5 failures · missing/garbage/tampered/`alg=none` JWT → 401 · logout revokes token |
-| Authorization | customer blocked from admin/auditor/audit endpoints · self-promotion blocked · admin/auditor blocked from customer money endpoints · auditor read-only (writes 403, DELETE 403/405) · **IDOR**: other customer's account/ledger/transaction → 404, can't deposit/transfer out of it |
-| Financial | deposit/withdraw/transfer balances · exactly 1 DEBIT + 1 CREDIT with equal amounts (JDBC) · integrity report balanced · insufficient funds, negative/zero/3-decimal amounts, same account, unknown destination, bad/missing idempotency key, wrong currency → rejected **and nothing changes** (rollback: balances, transaction count, ledger count unchanged) · frozen account blocked |
-| Idempotency | retry returns original (200 + `Idempotent-Replayed`), money moves once · same key different payload rejected · 8 concurrent same-key requests → exactly 1 created, 7 replays |
-| Concurrency | 12 parallel 10.00 transfers from a 50.00 account → exactly 5 succeed, balance 0.00, no overdraft, ledger balanced · 20 opposite-direction parallel transfers → no deadlock, balances restored |
-| Audit | LOGIN_SUCCESS/FAILURE, USER_REGISTERED, ACCOUNT_CREATED, DEPOSIT events exist · no password in audit data · customers can't read audit · UPDATE/DELETE/TRUNCATE on audit/ledger/transaction tables fail with SQLSTATE 42501 even via direct JDBC |
+Source: `frontend/src/lib/*.test.js`
 
-### Frontend unit tests (20) — `frontend/src/lib/*.test.js`
-Validators + password policy mirror, money parsing, idempotency-key generation/validation, token storage (sessionStorage only, cleared on logout), API client (bearer header, 401 clears session, error shape).
+All 20 tests passed.
 
-### Database tests — `database/tests/db_guarantees.sql`
-28 PASS/FAIL checks, run with `psql` against a scratch DB (see table above).
+Coverage includes validators, password policy mirror, money parsing, idempotency-key generation and validation, sessionStorage token handling, logout cleanup and API client behaviour.
+
+## Frontend production build
+
+- React 19 and Vite 7.3.7.
+- `npm run build` completed successfully.
+- 50 modules transformed.
+- Production output generated in `frontend/dist`.
+
+## Manual browser verification
+
+The frontend was manually checked against the running local backend.
+
+- Customer login and dashboard.
+- Account creation.
+- Deposit, withdrawal and transfer.
+- Transaction history and account filters.
+- Admin login, user management and audit trail.
+- Auditor login, financial records and audit events.
+- Auditor ledger-integrity check.
+- Auditor access to the admin UI was blocked/redirected.
+
+These are manual checks, not automated browser E2E tests.
+
+## Database SQL guarantees
+
+`database/tests/db_guarantees.sql` contains 28 PASS/FAIL checks.
+
+The documented result is 28 passed on PostgreSQL 16. These SQL checks are separate from the PostgreSQL 17 Spring Boot integration tests above.
 
 ## How to run
-See README §5. Integration-test environment variables are the same `LEDGERLINE_*` variables the app uses, pointed at a scratch DB.
 
-## Not covered (gaps)
-- No browser E2E against the real backend, no load test, no automated dependency/CVE scan (run `mvn dependency-check` / `npm audit` yourself).
-- Frontend component tests are not included; UI behaviour was only smoke-tested against a mock.
+Backend unit tests:
+
+```bash
+cd backend
+mvn test
+```
+
+Integration tests require the `LEDGERLINE_*` environment variables configured for a dedicated, disposable PostgreSQL test database. They create test users and financial records. Do not point them at a production or valuable database.
+
+```bash
+mvn test -Dtest=LedgerlineIntegrationTest
+```
+
+Frontend tests and build:
+
+```bash
+cd frontend
+npm install
+npm test
+npm run build
+```
+
+Database SQL checks should be run against a scratch database:
+
+```bash
+psql -d <scratch_db> -f database/tests/db_guarantees.sql
+```
+
+## Not covered / remaining gaps
+
+- No automated browser E2E suite against the real backend.
+- No load or stress test beyond the concurrency integration tests.
+- No automated dependency/CVE scan has been completed.
+- No per-IP global rate limiting.
+- No refresh-token mechanism.
+- Frontend component tests are not included.
+- Production deployment, TLS termination and external audit-log storage still require deployment configuration and operational work.
+- The database SQL guarantees result recorded above is from PostgreSQL 16; the 17 integration tests were separately executed against PostgreSQL 17.
