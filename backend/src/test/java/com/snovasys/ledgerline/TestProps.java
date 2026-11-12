@@ -14,7 +14,7 @@ public final class TestProps {
     }
 
     public static AppProperties create() {
-return create(TEST_ONLY_SECRET, "https://ledgerline.snovasys.local", Duration.ofMinutes(30));
+        return create(TEST_ONLY_SECRET, "ledgerline", Duration.ofMinutes(30));
     }
 
     public static AppProperties create(String secret, String issuer, Duration expiry) {

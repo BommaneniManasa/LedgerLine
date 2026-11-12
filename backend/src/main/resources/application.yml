@@ -17,9 +17,14 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  data:
+    redis:
+      repositories:
+        enabled: false       # Redis is only used for rate-limit counters, never for Spring Data repositories
 
 server:
-  port: ${PORT:${SERVER_PORT:8080}}
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  port: ${PORT:${SERVER_PORT:8080}}     # hosting platforms (e.g. Render) inject PORT; default stays 8080
   error:
     include-message: never
     include-stacktrace: never
@@ -40,6 +45,15 @@ ledgerline:
   security:
     max-failed-logins: 5
     lock-duration: PT15M
+  rate-limit:
+    # OFF by default (local development, tests). Production: set LEDGERLINE_RATE_LIMIT_ENABLED=true
+    # together with LEDGERLINE_REDIS_URL. When ON and Redis is unreachable, login/register answer 503 (fail closed).
+    enabled: ${LEDGERLINE_RATE_LIMIT_ENABLED:false}
+    redis-url: ${LEDGERLINE_REDIS_URL:}
+    trusted-proxy-hops: ${LEDGERLINE_TRUSTED_PROXY_HOPS:0}   # 0 = ignore X-Forwarded-For (see docs/DEPLOYMENT.md)
+    login-ip:         { limit: 20, window: PT5M }    # per client IP
+    login-identifier: { limit: 10, window: PT15M }   # per e-mail (HMAC-hashed in Redis)
+    register-ip:      { limit: 5,  window: PT1H }    # per client IP
   bootstrap:
     # Optional: creates the first ADMIN on startup if this email does not exist yet.
     admin-email: ${LEDGERLINE_BOOTSTRAP_ADMIN_EMAIL:}

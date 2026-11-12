@@ -1,5 +1,6 @@
 package com.snovasys.ledgerline.web;
 
+import com.snovasys.ledgerline.ratelimit.RateLimitService;
 import com.snovasys.ledgerline.security.AuthUser;
 import com.snovasys.ledgerline.service.AuthService;
 import com.snovasys.ledgerline.web.dto.AuthDtos.LoginRequest;
@@ -20,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final RateLimitService rateLimitService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, RateLimitService rateLimitService) {
         this.authService = authService;
+        this.rateLimitService = rateLimitService;
     }
 
     @PostMapping("/register")
@@ -32,6 +35,9 @@ public class AuthController {
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+        // Per-e-mail rate limit (the per-IP limit already ran in RateLimitFilter). Applies equally to
+        // unknown and existing e-mails, so a 429 reveals nothing about which accounts exist.
+        rateLimitService.checkLoginIdentifier(AuthService.normalizeEmail(request.email()));
         return authService.login(request);
     }
 
