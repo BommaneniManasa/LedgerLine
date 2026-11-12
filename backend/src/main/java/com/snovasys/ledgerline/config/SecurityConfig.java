@@ -8,6 +8,7 @@ import com.snovasys.ledgerline.security.JwtService;
 import com.snovasys.ledgerline.security.RestAccessDeniedHandler;
 import com.snovasys.ledgerline.security.RestAuthenticationEntryPoint;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -43,7 +44,7 @@ public class SecurityConfig {
                                                    DbJwtAuthenticationConverter converter,
                                                    RestAuthenticationEntryPoint entryPoint,
                                                    RestAccessDeniedHandler accessDeniedHandler,
-                                                   CorsConfigurationSource corsSource,
+                                                   @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource,
                                                    RateLimitService rateLimitService,
                                                    ClientIpResolver clientIpResolver) throws Exception {
         http
